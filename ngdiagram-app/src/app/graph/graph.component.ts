@@ -30,11 +30,24 @@ const fallbackPosition = (idx: number) => ({
   `,
   styles: [
     `
+      :host {
+        display: block;
+        height: 100%;
+      }
+
       .graph-shell {
         display: flex;
-        height: 100vh;
-        background: #0d1117;
+        position: relative;
+        height: 100%;
+        min-height: 420px;
+        background: var(--ngd-canvas-background, #0d1117);
+        border-top: 1px solid rgba(148, 163, 184, 0.18);
       }
+
+      ng-diagram {
+        flex: 1;
+      }
+
       .error {
         position: absolute;
         top: 12px;

@@ -1,2 +1,19 @@
-/* You can add global styles to this file, and also import other style files */
+/* ng-diagram styles should stay global (library requirement) */
 @import 'ng-diagram/styles.css';
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color-scheme: dark;
+
+  /* ng-diagram v1+ design tokens */
+  --ngd-canvas-background: #0d1117;
+  --ngd-node-background: #111827;
+  --ngd-node-border-color: #334155;
+  --ngd-node-color: #e2e8f0;
+  --ngd-edge-color: #64748b;
+}
