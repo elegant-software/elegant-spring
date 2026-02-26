@@ -31,21 +31,23 @@ const fallbackPosition = (idx: number) => ({
   styles: [
     `
       :host {
-        display: block;
-        height: 100%;
+        display: flex;
+        flex: 1;
+        min-height: 0;
       }
 
       .graph-shell {
         display: flex;
         position: relative;
-        height: 100%;
+        flex: 1;
         min-height: 420px;
-        background: var(--ngd-canvas-background, #0d1117);
-        border-top: 1px solid rgba(148, 163, 184, 0.18);
+        background: var(--ngd-canvas-background, #f8fafc);
+        border-top: 1px solid rgba(148, 163, 184, 0.35);
       }
 
       ng-diagram {
         flex: 1;
+        min-height: 0;
       }
 
       .error {
@@ -96,7 +98,7 @@ export class GraphComponent implements OnInit {
         error: () => {
           // Fallback to bundled mock if API not available yet.
           this.http
-            .get<GraphResponse>('assets/graph-mock.json')
+            .get<GraphResponse>('/graph-mock.json')
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
               next: (graph) => {

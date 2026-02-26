@@ -28,4 +28,11 @@
 
  .graph-host {
    flex: 1;
+   min-height: 0;
+   display: flex;
+ }
+
+ app-graph {
+   flex: 1;
+   min-height: 0;
  }

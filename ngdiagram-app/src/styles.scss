@@ -8,12 +8,12 @@ body {
 
 body {
   margin: 0;
-  color-scheme: dark;
+  color-scheme: light;
 
   /* ng-diagram v1+ design tokens */
-  --ngd-canvas-background: #0d1117;
-  --ngd-node-background: #111827;
+  --ngd-canvas-background: #f8fafc;
+  --ngd-node-background-color: #ffffff;
   --ngd-node-border-color: #334155;
-  --ngd-node-color: #e2e8f0;
-  --ngd-edge-color: #64748b;
+  --ngd-default-edge-stroke: #64748b;
+  --ngd-background-dot-color: #cbd5e1;
 }
