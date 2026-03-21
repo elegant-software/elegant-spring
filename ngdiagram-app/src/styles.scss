@@ -15,3 +15,44 @@ body {
 * {
   box-sizing: border-box;
 }
+
+.relationship-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.relationship-legend__item {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.relationship-legend__item--one-to-one {
+  color: #D55E00;
+}
+
+.relationship-legend__item--one-to-many {
+  color: #0072B2;
+}
+
+.relationship-legend__item--many-to-one {
+  color: #009E73;
+}
+
+.relationship-legend__item--many-to-many {
+  color: #CC79A7;
+}
+
+@media (max-width: 1100px) {
+  .relationship-legend {
+    justify-content: flex-start;
+  }
+}

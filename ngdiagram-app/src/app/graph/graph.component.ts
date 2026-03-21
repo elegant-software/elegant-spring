@@ -1,10 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, Injector, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, Injector, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { interval } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ButtonDirective } from '@coreui/angular';
 import {
   NgDiagramBackgroundComponent,
   NgDiagramComponent,
+  NgDiagramEdgeTemplateMap,
   NgDiagramNodeTemplateMap,
   type Edge,
   NgDiagramMinimapComponent,
@@ -14,9 +16,11 @@ import {
   initializeModel,
   provideNgDiagram,
 } from 'ng-diagram';
-import { RELATIONSHIP_PORT_RENDER_SETTINGS, type RelationshipPortMarker } from './relationship-port-settings';
+import { type RelationshipPortMarker } from './relationship-port-settings';
 import { DiagramApiService, type DiagramLink, type DiagramNode, type DiagramResponse } from './services/diagram-api.service';
 import { EntityNodeComponent, type EntityNodeTemplateData } from './entity-node.component';
+import { RelationshipEdgeComponent } from './relationship-edge.component';
+import { getRelationshipEdgeType } from './relationship-edge-styles';
 
 const DEFAULT_POSITION_SPREAD = 220;
 const ENTITY_NODE_SIZE = { width: 220, height: 88 };
@@ -41,7 +45,8 @@ type DiagramEdgeData = {
 };
 
 type EntityPort = EntityNodeTemplateData['leftPorts'][number];
-type DiagramViewport = { x: number; y: number; scale: number };
+
+const getLinkId = (link: DiagramLink, fallbackIndex = 0) => link.id ?? `edge-${fallbackIndex}`;
 
 const extractCardinalityParts = (cardinality?: string) => {
   if (!cardinality) {
@@ -100,8 +105,9 @@ const buildEntityPorts = (graph: DiagramResponse, entity: DiagramNode) => {
   const outgoing = graph.links.filter((link) => link.source === entity.id);
 
   const leftPorts: EntityPort[] = incoming.map((link, index) => {
+    const linkId = getLinkId(link, index);
     return {
-      id: `${link.id}-target`,
+      id: `${linkId}-target`,
       side: 'left',
       type: 'target',
       label: resolveEndpointMarker(graph, link, 'target') as EntityPort['label'],
@@ -111,8 +117,9 @@ const buildEntityPorts = (graph: DiagramResponse, entity: DiagramNode) => {
   });
 
   const rightPorts: EntityPort[] = outgoing.map((link, index) => {
+    const linkId = getLinkId(link, index);
     return {
-      id: `${link.id}-source`,
+      id: `${linkId}-source`,
       side: 'right',
       type: 'source',
       label: resolveEndpointMarker(graph, link, 'source') as EntityPort['label'],
@@ -124,7 +131,7 @@ const buildEntityPorts = (graph: DiagramResponse, entity: DiagramNode) => {
   return { leftPorts, rightPorts };
 };
 
-const STATIC_VIEWPORT: DiagramViewport = {
+const STATIC_VIEWPORT = {
   x: 38,
   y: 185,
   scale: 0.68,
@@ -133,7 +140,7 @@ const STATIC_VIEWPORT: DiagramViewport = {
 @Component({
   selector: 'app-graph',
   standalone: true,
-  imports: [CommonModule, NgDiagramComponent, NgDiagramBackgroundComponent, NgDiagramMinimapComponent],
+  imports: [CommonModule, ButtonDirective, NgDiagramComponent, NgDiagramBackgroundComponent, NgDiagramMinimapComponent],
   providers: [provideNgDiagram()],
   template: `
     <div class="graph-shell">
@@ -143,10 +150,21 @@ const STATIC_VIEWPORT: DiagramViewport = {
             <p class="panel__eyebrow">Workspace</p>
             <h3>Entity Diagram</h3>
           </div>
-          <p class="panel__summary">Inspect entities, relationships, and live updates in a standard CoreUI workspace.</p>
+          <div class="panel__actions">
+            <p class="panel__summary">Inspect entities, relationships, and live updates in a standard CoreUI workspace.</p>
+            <div class="relationship-legend" aria-label="Relationship color legend">
+              <span class="relationship-legend__item relationship-legend__item--one-to-one">1:1</span>
+              <span class="relationship-legend__item relationship-legend__item--one-to-many">1:N</span>
+              <span class="relationship-legend__item relationship-legend__item--many-to-one">N:1</span>
+              <span class="relationship-legend__item relationship-legend__item--many-to-many">N:N</span>
+            </div>
+            <button cButton color="primary" variant="outline" type="button" [disabled]="savingImage || !hasNodes" (click)="saveImage()">
+              {{ savingImage ? 'Saving…' : 'Save image' }}
+            </button>
+          </div>
         </div>
 
-        <div class="diagram-stage">
+        <div #diagramContainer class="diagram-stage">
           <div class="error" *ngIf="error">{{ error }}</div>
           <div class="empty-state" *ngIf="!error && !hasNodes">
             <div class="empty-state-card">
@@ -154,14 +172,12 @@ const STATIC_VIEWPORT: DiagramViewport = {
               <p>POST JPA entities and relationships to <code>/api/diagram</code> to render the model.</p>
             </div>
           </div>
-          <svg class="relationship-overlay" *ngIf="graphState() as graph" viewBox="0 0 1600 900" aria-hidden="true">
-            <g [attr.transform]="overlayTransform">
-              <ng-container *ngFor="let link of graph.links">
-                <path class="relationship-overlay__path" [attr.d]="buildRelationshipPath(graph, link)"></path>
-              </ng-container>
-            </g>
-          </svg>
-          <ng-diagram [model]="model" [nodeTemplateMap]="nodeTemplateMap" (diagramInit)="diagramReady = true">
+          <ng-diagram
+            [edgeTemplateMap]="edgeTemplateMap"
+            [model]="model"
+            [nodeTemplateMap]="nodeTemplateMap"
+            (diagramInit)="diagramReady = true"
+          >
             <ng-diagram-background type="dots"></ng-diagram-background>
             <ng-diagram-minimap
               *ngIf="diagramReady"
@@ -364,6 +380,13 @@ const STATIC_VIEWPORT: DiagramViewport = {
         text-align: right;
       }
 
+      .panel__actions {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.5rem;
+      }
+
       .diagram-stage {
         position: relative;
         display: flex;
@@ -375,22 +398,6 @@ const STATIC_VIEWPORT: DiagramViewport = {
         overflow: hidden;
       }
 
-      .relationship-overlay {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 1;
-      }
-
-      .relationship-overlay__path {
-        fill: none;
-        stroke: #4f46e5;
-        stroke-width: 3;
-        stroke-linecap: round;
-      }
-
       ng-diagram {
         flex: 1 1 auto;
         min-width: 0;
@@ -398,9 +405,9 @@ const STATIC_VIEWPORT: DiagramViewport = {
         --ngd-diagram-background-color: #ffffff;
         --ngd-minimap-background: rgba(255, 255, 255, 0.98);
         --ngd-minimap-border-color: rgba(148, 163, 184, 0.35);
-        --ngd-default-edge-stroke: #4f46e5;
-        --ngd-default-edge-stroke-hover: #4338ca;
-        --ngd-default-edge-stroke-selected: #0f172a;
+        --ngd-default-edge-stroke: #6c757d;
+        --ngd-default-edge-stroke-hover: #495057;
+        --ngd-default-edge-stroke-selected: #212529;
       }
 
       ng-diagram ::ng-deep svg path {
@@ -572,6 +579,10 @@ const STATIC_VIEWPORT: DiagramViewport = {
           text-align: left;
         }
 
+        .panel__actions {
+          align-items: flex-start;
+        }
+
         .diagram-stage,
         .panel--sidebar {
           min-height: 480px;
@@ -587,9 +598,16 @@ export class GraphComponent implements OnInit {
   private readonly diagramService = inject(NgDiagramService);
   private readonly selectionService = inject(NgDiagramSelectionService);
   readonly nodeTemplateMap = new NgDiagramNodeTemplateMap([['entity-node', EntityNodeComponent]]);
-  readonly overlayTransform = `translate(${STATIC_VIEWPORT.x} ${STATIC_VIEWPORT.y}) scale(${STATIC_VIEWPORT.scale})`;
+  readonly edgeTemplateMap = new NgDiagramEdgeTemplateMap([
+    ['relationship-default', RelationshipEdgeComponent],
+    ['relationship-one-to-one', RelationshipEdgeComponent],
+    ['relationship-one-to-many', RelationshipEdgeComponent],
+    ['relationship-many-to-one', RelationshipEdgeComponent],
+    ['relationship-many-to-many', RelationshipEdgeComponent],
+  ]);
 
   model = initializeModel({ nodes: [], edges: [] }, this.injector);
+  diagramContainer = viewChild<ElementRef<HTMLElement>>('diagramContainer');
   graphState = signal<DiagramResponse | undefined>(undefined);
   selectedNode = computed(() => this.selectionService.selection().nodes[0] as Node<DiagramNodeData> | undefined);
   selectedEdge = computed(() => this.selectionService.selection().edges[0] as Edge<DiagramEdgeData> | undefined);
@@ -606,6 +624,32 @@ export class GraphComponent implements OnInit {
   hasConnected = false;
   hasNodes = false;
   diagramReady = false;
+  savingImage = false;
+
+  async saveImage(): Promise<void> {
+    const container = this.diagramContainer()?.nativeElement;
+    if (!container || this.savingImage) return;
+
+    this.savingImage = true;
+    try {
+      const { toPng } = await import('html-to-image');
+      const dataUrl = await toPng(container, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: '#ffffff',
+      });
+
+      const anchor = document.createElement('a');
+      anchor.href = dataUrl;
+      anchor.download = `entity-diagram-${new Date().toISOString().slice(0, 10)}.png`;
+      anchor.click();
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown export error';
+      this.error = `Unable to save image. (${detail})`;
+    } finally {
+      this.savingImage = false;
+    }
+  }
 
   ngOnInit(): void {
     const buildModel = async (graph: DiagramResponse) => {
@@ -632,9 +676,12 @@ export class GraphComponent implements OnInit {
 
           this.model.updateEdges(
             graph.links.map((link, idx) => ({
-              id: link.id ?? `edge-${idx}`,
+              id: getLinkId(link, idx),
               source: link.source,
+              sourcePort: `${getLinkId(link, idx)}-source`,
               target: link.target,
+              targetPort: `${getLinkId(link, idx)}-target`,
+              type: getRelationshipEdgeType(link.metadata?.relationType),
               routing: 'bezier',
               data: {
                 label: link.label ?? '',
@@ -678,41 +725,5 @@ export class GraphComponent implements OnInit {
           error: () => undefined,
         });
       });
-  }
-
-  buildRelationshipPath(graph: DiagramResponse, link: DiagramResponse['links'][number]): string {
-    const source = this.resolveLinkEndpoint(graph, link, 'source');
-    const target = this.resolveLinkEndpoint(graph, link, 'target');
-    const controlOffset = Math.max(90, (target.x - source.x) / 2);
-
-    return `M ${source.x} ${source.y} C ${source.x + controlOffset} ${source.y}, ${target.x - controlOffset} ${target.y}, ${target.x} ${target.y}`;
-  }
-
-  private resolveLinkEndpoint(
-    graph: DiagramResponse,
-    link: DiagramResponse['links'][number],
-    side: 'source' | 'target',
-  ): { x: number; y: number } {
-    const nodeId = side === 'source' ? link.source : link.target;
-    const node = graph.nodes.find((entry) => entry.id === nodeId);
-    const nodePosition = node?.position ?? fallbackPosition(graph.nodes.findIndex((entry) => entry.id === nodeId));
-
-    if (!node) {
-      return { x: 0, y: 0 };
-    }
-
-    const ports = buildEntityPorts(graph, node);
-    const portId = `${link.id}-${side}`;
-    const port =
-      side === 'source'
-        ? ports.rightPorts.find((entry) => entry.id === portId)
-        : ports.leftPorts.find((entry) => entry.id === portId);
-    const y = nodePosition.y + (ENTITY_NODE_SIZE.height * ((port?.offsetPercent ?? 50) / 100));
-    const x =
-      side === 'source'
-        ? nodePosition.x + ENTITY_NODE_SIZE.width + RELATIONSHIP_PORT_RENDER_SETTINGS.markerOffset
-        : nodePosition.x - RELATIONSHIP_PORT_RENDER_SETTINGS.markerOffset;
-
-    return { x, y };
   }
 }
