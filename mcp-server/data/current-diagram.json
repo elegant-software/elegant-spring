@@ -1,0 +1,205 @@
+{
+  "version": "1.0",
+  "entities": [
+    {
+      "id": "employee",
+      "label": "Employee",
+      "type": "entity",
+      "status": "healthy",
+      "metadata": {
+        "kind": "jpa-entity",
+        "packageName": "com.example.hr.domain",
+        "tableName": "employees",
+        "idField": "id",
+        "description": "Core workforce record that belongs to one department and owns one salary aggregate.",
+        "annotations": [
+          "@Entity",
+          "@Table(name = \"employees\")"
+        ],
+        "businessRules": [
+          "Every employee must belong to a department.",
+          "Salary is managed as a dedicated aggregate."
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "type": "Long",
+            "column": "id",
+            "nullable": false,
+            "id": true
+          },
+          {
+            "name": "employeeNumber",
+            "type": "String",
+            "column": "employee_number",
+            "nullable": false,
+            "unique": true
+          },
+          {
+            "name": "fullName",
+            "type": "String",
+            "column": "full_name",
+            "nullable": false
+          },
+          {
+            "name": "department",
+            "type": "Department",
+            "column": "department_id",
+            "nullable": false
+          },
+          {
+            "name": "salary",
+            "type": "Salary",
+            "nullable": false
+          }
+        ]
+      },
+      "layoutHint": {
+        "x": 180,
+        "y": 140
+      }
+    },
+    {
+      "id": "department",
+      "label": "Department",
+      "type": "entity",
+      "status": "healthy",
+      "metadata": {
+        "kind": "jpa-entity",
+        "packageName": "com.example.hr.domain",
+        "tableName": "departments",
+        "idField": "id",
+        "description": "Organizational unit that groups employees and exposes a manager reference.",
+        "annotations": [
+          "@Entity",
+          "@Table(name = \"departments\")"
+        ],
+        "businessRules": [
+          "A department can contain many employees.",
+          "Department names must be unique."
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "type": "Long",
+            "column": "id",
+            "nullable": false,
+            "id": true
+          },
+          {
+            "name": "name",
+            "type": "String",
+            "column": "name",
+            "nullable": false,
+            "unique": true
+          },
+          {
+            "name": "costCenter",
+            "type": "String",
+            "column": "cost_center",
+            "nullable": false
+          },
+          {
+            "name": "employees",
+            "type": "List<Employee>",
+            "nullable": true
+          }
+        ]
+      },
+      "layoutHint": {
+        "x": 460,
+        "y": 140
+      }
+    },
+    {
+      "id": "salary",
+      "label": "Salary",
+      "type": "entity",
+      "status": "healthy",
+      "metadata": {
+        "kind": "jpa-entity",
+        "packageName": "com.example.hr.domain",
+        "tableName": "salaries",
+        "idField": "id",
+        "description": "Compensation aggregate linked one-to-one with an employee.",
+        "annotations": [
+          "@Entity",
+          "@Table(name = \"salaries\")"
+        ],
+        "businessRules": [
+          "Each employee has at most one active salary record."
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "type": "Long",
+            "column": "id",
+            "nullable": false,
+            "id": true
+          },
+          {
+            "name": "baseAmount",
+            "type": "BigDecimal",
+            "column": "base_amount",
+            "nullable": false
+          },
+          {
+            "name": "currency",
+            "type": "String",
+            "column": "currency",
+            "nullable": false
+          },
+          {
+            "name": "effectiveFrom",
+            "type": "LocalDate",
+            "column": "effective_from",
+            "nullable": false
+          },
+          {
+            "name": "employee",
+            "type": "Employee",
+            "column": "employee_id",
+            "nullable": false,
+            "unique": true
+          }
+        ]
+      },
+      "layoutHint": {
+        "x": 740,
+        "y": 140
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "id": "employee-department",
+      "source": "employee",
+      "target": "department",
+      "label": "@ManyToOne",
+      "channel": "JPA",
+      "metadata": {
+        "relationType": "ManyToOne",
+        "sourceField": "department",
+        "targetField": "employees",
+        "cardinality": "N:1",
+        "owningSide": true,
+        "fetch": "LAZY"
+      }
+    },
+    {
+      "id": "employee-salary",
+      "source": "employee",
+      "target": "salary",
+      "label": "@OneToOne",
+      "channel": "JPA",
+      "metadata": {
+        "relationType": "OneToOne",
+        "sourceField": "salary",
+        "targetField": "employee",
+        "cardinality": "1:1",
+        "owningSide": true,
+        "fetch": "LAZY"
+      }
+    }
+  ]
+}
