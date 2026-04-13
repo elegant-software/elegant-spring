@@ -7,14 +7,61 @@
 //   GET  /api/diagram/state -> load saved diagram state
 
 import { createServer } from 'node:http';
-import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { readFile, writeFile, stat } from 'node:fs/promises';
+import { resolve, join, extname } from 'node:path';
 
 const portEnv = process.env.PORT;
 const parsedPort = Number.parseInt(portEnv ?? '', 10);
 const PORT = Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : 3100;
 const graphPath = resolve('./graph-mock.json');
 const statePath = resolve('./diagram-state.json');
+
+// Static file serving for production (Angular build output)
+const STATIC_DIR = resolve(process.env.STATIC_DIR || './public');
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+};
+
+const serveStatic = async (req, res) => {
+  const urlPath = req.url.split('?')[0];
+  let filePath = join(STATIC_DIR, urlPath === '/' ? 'index.html' : urlPath);
+
+  try {
+    const fileStat = await stat(filePath);
+    if (fileStat.isFile()) {
+      const ext = extname(filePath);
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+      const content = await readFile(filePath);
+      res.setHeader('Content-Type', contentType);
+      res.statusCode = 200;
+      res.end(content);
+      return true;
+    }
+  } catch {
+    // File not found - try index.html for SPA routing
+    try {
+      const indexPath = join(STATIC_DIR, 'index.html');
+      const content = await readFile(indexPath);
+      res.setHeader('Content-Type', 'text/html');
+      res.statusCode = 200;
+      res.end(content);
+      return true;
+    } catch {
+      // No static files available
+    }
+  }
+  return false;
+};
 
 // In-memory storage for diagram state
 let savedDiagramState = null;
@@ -123,6 +170,10 @@ const server = createServer(async (req, res) => {
     });
     return;
   }
+
+  // Serve static files for non-API routes (Angular SPA)
+  const served = await serveStatic(req, res);
+  if (served) return;
 
   json(res, 404, { error: 'Not found', message: 'Use /api/graph or /api/diagram endpoints.' });
 });
