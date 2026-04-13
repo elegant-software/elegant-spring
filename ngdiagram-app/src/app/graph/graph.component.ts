@@ -731,17 +731,23 @@ export class GraphComponent implements OnInit {
     try {
       const stateJson = this.model.toJSON();
       const ngDiagramState = typeof stateJson === 'string' ? JSON.parse(stateJson) : stateJson;
+      const rawNodes = Array.isArray(ngDiagramState?.nodes) ? ngDiagramState.nodes : [];
+      const rawLinks = Array.isArray(ngDiagramState?.links)
+        ? ngDiagramState.links
+        : Array.isArray(ngDiagramState?.edges)
+          ? ngDiagramState.edges
+          : [];
 
       // Check if diagram is empty
-      if (!ngDiagramState.nodes || ngDiagramState.nodes.length === 0) {
+      if (rawNodes.length === 0) {
         this.pushToast('warning', 'Nothing to save', 'Diagram is empty. Add some entities first.');
         return;
       }
 
-      // Transform ng-diagram format (nodes/links) to MCP server format (entities/relationships)
+      // ng-diagram serialization may emit either `links` or `edges` depending on the code path.
       const serverPayload = {
         version: ngDiagramState.version ?? '1.0',
-        entities: ngDiagramState.nodes.map((node: DiagramNode) => ({
+        entities: rawNodes.map((node: DiagramNode) => ({
           id: node.id,
           label: node.name,
           type: node.type ?? 'entity',
@@ -749,7 +755,7 @@ export class GraphComponent implements OnInit {
           layoutHint: node.position ? { x: node.position.x, y: node.position.y } : undefined,
           metadata: node.metadata,
         })),
-        relationships: ngDiagramState.links.map((link: DiagramLink) => ({
+        relationships: rawLinks.map((link: DiagramLink) => ({
           id: link.id,
           source: link.source,
           target: link.target,
