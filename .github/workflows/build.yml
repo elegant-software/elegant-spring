@@ -73,5 +73,5 @@ jobs:
     uses: ./.github/workflows/deploy.yml
     with:
       image_reference: ${{ needs.build.outputs.image_reference }}
-      kube_namespace: elegent-spring-diagram
+      kube_namespace: blitzpay-staging
     secrets: inherit
