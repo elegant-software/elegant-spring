@@ -183,6 +183,8 @@ http://localhost:4200
 
 ## Run As A Real MCP Server
 
+### Local (stdio)
+
 Build the server first:
 
 ```bash
@@ -197,6 +199,18 @@ Then run the stdio MCP entrypoint:
 npm run start:mcp
 ```
 
+### Remote (Streamable HTTP)
+
+The MCP server also exposes a Streamable HTTP transport at `/mcp` when running the main server process:
+
+```bash
+cd mcp-server
+npm run build
+npm start          # listens on http://0.0.0.0:3100
+```
+
+MCP clients connect by sending a JSON-RPC `initialize` POST to `/mcp`. Subsequent requests include the `mcp-session-id` header returned during initialization. Sessions can be terminated with `DELETE /mcp`.
+
 This MCP server exposes:
 
 - tools:
@@ -210,7 +224,58 @@ This MCP server exposes:
 - prompts:
   - `generate-jpa-diagram-json`
 
-The HTTP dashboard server and the stdio MCP server share the same persisted file state, so updates made through MCP are visible to the Angular dashboard.
+The HTTP dashboard server, the Streamable HTTP MCP endpoint, and the stdio MCP server all share the same persisted file state, so updates made through any channel are visible everywhere.
+
+## Deployment (Kubernetes)
+
+The project ships with GitHub Actions workflows and Kubernetes manifests for two separately deployed services.
+
+### Container images
+
+The CI pipeline (`.github/workflows/build.yml`) builds two images on every push to `main`:
+
+| Image | Dockerfile | Description |
+|-------|-----------|-------------|
+| `ghcr.io/<repo>/frontend:<sha>` | `Dockerfile` | Angular app served by a Node.js static file server |
+| `ghcr.io/<repo>/mcp-server:<sha>` | `mcp-server/Dockerfile` | MCP + REST + WebSocket API server |
+
+### Kubernetes resources
+
+| Manifest | Resources | Service |
+|----------|-----------|---------|
+| `k8s/deployment.yaml` | Deployment, Service, Ingress | Frontend (`springarchview`) |
+| `k8s/mcp-server.yaml` | Deployment, Service, Ingress | MCP server (`springarchview-mcp`) |
+
+### URLs after deployment
+
+| Service | URL |
+|---------|-----|
+| Frontend | `https://springarchview.elegantsoftware.de` |
+| MCP Server REST API | `https://springarchview-mcp.elegantsoftware.de/api/diagram` |
+| MCP Streamable HTTP | `https://springarchview-mcp.elegantsoftware.de/mcp` |
+| WebSocket | `wss://springarchview-mcp.elegantsoftware.de/ws/diagram` |
+| Health check | `https://springarchview-mcp.elegantsoftware.de/health` |
+
+### Required secrets
+
+Set these in your GitHub repository settings:
+
+- `K8S_SERVER` — Kubernetes API server URL
+- `K8S_CA_CERT` — base64-encoded CA certificate
+- `K8S_TOKEN` — service account token
+- `GITHUB_TOKEN` — provided automatically by GitHub Actions
+
+The k8s namespace also needs a `ghcr-pull-secret` image pull secret.
+
+### Build and deploy locally with Docker
+
+```bash
+# Frontend
+docker build -t springarchview:latest -f Dockerfile .
+
+# MCP server
+docker build -t springarchview-mcp:latest -f mcp-server/Dockerfile mcp-server/
+```
 
 ## IntelliJ IDEA Setup
 
@@ -224,11 +289,9 @@ If you want to run the Node services inside IntelliJ IDEA first:
 
 Use the first configuration for the dashboard backend, the second for the Angular UI, and the third when an MCP client should spawn the real MCP server.
 
-## JetBrains / Codex MCP Registration
+## MCP Client Registration
 
-For local IDE integrations, prefer `stdio`. Official MCP guidance recommends `stdio` for local process-spawned servers and Streamable HTTP for remote deployments.
-
-An example client configuration looks like this:
+### Local (stdio) — for IDE integrations
 
 ```json
 {
@@ -249,6 +312,19 @@ If your client supports a working directory field, set it to:
 /Users/mehdi/MyProject/elegent-spring-diagram/mcp-server
 ```
 
+### Remote (Streamable HTTP) — for deployed environments
+
+```json
+{
+  "mcpServers": {
+    "spring-dashboard": {
+      "type": "streamable-http",
+      "url": "https://springarchview-mcp.elegantsoftware.de/mcp"
+    }
+  }
+}
+```
+
 ## Post Your Own Domain Model
 
 ```bash
@@ -265,22 +341,26 @@ Or send a custom payload with your own JPA entities and relations.
 - `GET /api/diagram`
 - `POST /api/diagram`
 - `WS /ws/diagram`
-- `stdio MCP server` via [stdio.ts](/Users/mehdi/MyProject/elegent-spring-diagram/mcp-server/src/stdio.ts)
+- `POST /mcp` — MCP Streamable HTTP transport (initialize + JSON-RPC requests)
+- `GET /mcp` — MCP SSE stream for server-initiated notifications
+- `DELETE /mcp` — terminate MCP session
+- `stdio MCP server` via [stdio.ts](mcp-server/src/stdio.ts) (local development)
 
 ## Key Files
 
-- [server.ts](/Users/mehdi/MyProject/elegent-spring-diagram/mcp-server/src/server.ts)
-- [stdio.ts](/Users/mehdi/MyProject/elegent-spring-diagram/mcp-server/src/stdio.ts)
-- [mcp-server.ts](/Users/mehdi/MyProject/elegent-spring-diagram/mcp-server/src/mcp-server.ts)
-- [diagram-store.ts](/Users/mehdi/MyProject/elegent-spring-diagram/mcp-server/src/diagram-store.ts)
-- [current-diagram.json](/Users/mehdi/MyProject/elegent-spring-diagram/mcp-server/data/current-diagram.json)
-- [contracts.ts](/Users/mehdi/MyProject/elegent-spring-diagram/mcp-server/src/contracts.ts)
-- [app.routes.ts](/Users/mehdi/MyProject/elegent-spring-diagram/ngdiagram-app/src/app/app.routes.ts)
-- [default-layout.component.ts](/Users/mehdi/MyProject/elegent-spring-diagram/ngdiagram-app/src/app/layout/default-layout/default-layout.component.ts)
-- [default-header.component.html](/Users/mehdi/MyProject/elegent-spring-diagram/ngdiagram-app/src/app/layout/default-layout/default-header/default-header.component.html)
-- [graph.component.ts](/Users/mehdi/MyProject/elegent-spring-diagram/ngdiagram-app/src/app/graph/graph.component.ts)
-- [diagram-api.service.ts](/Users/mehdi/MyProject/elegent-spring-diagram/ngdiagram-app/src/app/graph/services/diagram-api.service.ts)
-- [graph-mock.json](/Users/mehdi/MyProject/elegent-spring-diagram/graph-mock.json)
+- [server.ts](mcp-server/src/server.ts) — Express server with REST, WebSocket, and MCP HTTP transport
+- [stdio.ts](mcp-server/src/stdio.ts) — stdio MCP entrypoint for local clients
+- [mcp-server.ts](mcp-server/src/mcp-server.ts) — MCP tool/resource/prompt definitions
+- [diagram-store.ts](mcp-server/src/diagram-store.ts) — diagram persistence and file watching
+- [current-diagram.json](mcp-server/data/current-diagram.json) — persisted diagram state
+- [contracts.ts](mcp-server/src/contracts.ts) — Zod schemas and TypeScript types
+- [app.routes.ts](ngdiagram-app/src/app/app.routes.ts) — Angular routing
+- [graph.component.ts](ngdiagram-app/src/app/graph/graph.component.ts) — diagram view component
+- [diagram-api.service.ts](ngdiagram-app/src/app/graph/services/diagram-api.service.ts) — Angular API service
+- [Dockerfile](Dockerfile) — frontend container build
+- [mcp-server/Dockerfile](mcp-server/Dockerfile) — MCP server container build
+- [k8s/deployment.yaml](k8s/deployment.yaml) — frontend k8s manifest
+- [k8s/mcp-server.yaml](k8s/mcp-server.yaml) — MCP server k8s manifest
 
 ## Current Limitations
 
@@ -288,10 +368,8 @@ Or send a custom payload with your own JPA entities and relations.
 - the Angular build emits a non-blocking component style budget warning for the graph component
 - the CoreUI layout shell currently uses placeholder pages for `Users` and `Settings`
 - `set_current_diagram` currently accepts the full payload as a JSON string input for broad MCP client compatibility
-- Streamable HTTP MCP transport is not implemented yet; the production path here is local `stdio`
 
 ## Suggested Next Steps
 
 1. Add explicit edge selection UX and relationship-only sidebar view.
 2. Add Spring Boot sample producer code for scanning JPA metadata and sending the payload through MCP.
-3. Add Streamable HTTP transport if you need a remote MCP deployment instead of local IDE/client spawning.

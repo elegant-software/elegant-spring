@@ -1,10 +1,13 @@
-name: Deploy ngdiagram-app
+name: Deploy springarchview
 
 on:
   workflow_dispatch:
     inputs:
       image_reference:
-        description: 'Image reference to deploy (e.g. ghcr.io/org/repo:sha)'
+        description: 'Frontend image reference (e.g. ghcr.io/org/repo/frontend:sha)'
+        required: false
+      mcp_image_reference:
+        description: 'MCP server image reference (e.g. ghcr.io/org/repo/mcp-server:sha)'
         required: false
       kube_namespace:
         description: 'Kubernetes namespace'
@@ -13,6 +16,9 @@ on:
   workflow_call:
     inputs:
       image_reference:
+        type: string
+        required: true
+      mcp_image_reference:
         type: string
         required: true
       kube_namespace:
@@ -30,8 +36,9 @@ jobs:
   apply:
     runs-on: self-hosted
     env:
-      KUBE_NAMESPACE: ${{ inputs.kube_namespace || github.event.inputs.kube_namespace || secrets.KUBE_NAMESPAC }}
-      IMAGE_REFERENCE: ${{ inputs.image_reference || github.event.inputs.image_reference || format('ghcr.io/{0}:latest', github.repository) }}
+      KUBE_NAMESPACE: ${{ inputs.kube_namespace || github.event.inputs.kube_namespace || secrets.KUBE_NAMESPACE }}
+      IMAGE_REFERENCE: ${{ inputs.image_reference || github.event.inputs.image_reference || format('ghcr.io/{0}/frontend:latest', github.repository) }}
+      MCP_IMAGE_REFERENCE: ${{ inputs.mcp_image_reference || github.event.inputs.mcp_image_reference || format('ghcr.io/{0}/mcp-server:latest', github.repository) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -70,9 +77,12 @@ jobs:
       - name: Verify cluster connectivity
         run: kubectl cluster-info --request-timeout=10s
 
-      - name: Render Kubernetes manifest
+      - name: Render Kubernetes manifests
         run: |
           sed "s|\${IMAGE}|${{ env.IMAGE_REFERENCE }}|g" k8s/deployment.yaml > /tmp/deployment.yaml
+          sed "s|\${MCP_IMAGE}|${{ env.MCP_IMAGE_REFERENCE }}|g" k8s/mcp-server.yaml > /tmp/mcp-server.yaml
 
-      - name: Apply Kubernetes manifest
-        run: kubectl apply -f /tmp/deployment.yaml -n "$KUBE_NAMESPACE"
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f /tmp/deployment.yaml -n "$KUBE_NAMESPACE"
+          kubectl apply -f /tmp/mcp-server.yaml -n "$KUBE_NAMESPACE"

@@ -1,4 +1,4 @@
-name: Build container image
+name: Build container images
 
 on:
   push:
@@ -13,9 +13,6 @@ on:
       registry:
         type: string
         required: false
-      image_repository:
-        type: string
-        required: false
       image_tag:
         type: string
         required: false
@@ -25,14 +22,13 @@ permissions:
   packages: write
 
 jobs:
-  build:
+  build-frontend:
     runs-on: ubuntu-latest
     outputs:
       image_reference: ${{ steps.compute-image.outputs.image_reference }}
-      image_latest: ${{ steps.compute-image.outputs.image_latest }}
     env:
       REGISTRY_URL: ${{ inputs.registry_url || secrets.REGISTRY_URL || 'ghcr.io' }}
-      IMAGE_REPOSITORY: ${{ inputs.image_repository || secrets.IMAGE_REPOSITORY || format('ghcr.io/{0}', github.repository) }}
+      IMAGE_REPOSITORY: ${{ secrets.IMAGE_REPOSITORY || format('ghcr.io/{0}/frontend', github.repository) }}
       IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
     steps:
       - name: Checkout code
@@ -54,24 +50,67 @@ jobs:
           echo "IMAGE_REFERENCE=${IMAGE_REPOSITORY}:${IMAGE_TAG}" >> "$GITHUB_ENV"
           echo "LATEST_IMAGE=${IMAGE_REPOSITORY}:latest" >> "$GITHUB_ENV"
           echo "image_reference=${IMAGE_REPOSITORY}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "image_latest=${IMAGE_REPOSITORY}:latest" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push image
+      - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: Dockerfile
           push: true
           tags: |
             ${{ env.IMAGE_REFERENCE }}
             ${{ env.LATEST_IMAGE }}
           platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  build-mcp-server:
+    runs-on: ubuntu-latest
+    outputs:
+      image_reference: ${{ steps.compute-image.outputs.image_reference }}
+    env:
+      REGISTRY_URL: ${{ inputs.registry_url || secrets.REGISTRY_URL || 'ghcr.io' }}
+      MCP_IMAGE_REPOSITORY: ${{ secrets.MCP_IMAGE_REPOSITORY || format('ghcr.io/{0}/mcp-server', github.repository) }}
+      IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry || env.REGISTRY_URL }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image references
+        id: compute-image
+        run: |
+          echo "IMAGE_REFERENCE=${MCP_IMAGE_REPOSITORY}:${IMAGE_TAG}" >> "$GITHUB_ENV"
+          echo "LATEST_IMAGE=${MCP_IMAGE_REPOSITORY}:latest" >> "$GITHUB_ENV"
+          echo "image_reference=${MCP_IMAGE_REPOSITORY}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push MCP server image
+        uses: docker/build-push-action@v5
+        with:
+          context: mcp-server
+          file: mcp-server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_REFERENCE }}
+            ${{ env.LATEST_IMAGE }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha,scope=mcp-server
+          cache-to: type=gha,mode=max,scope=mcp-server
 
   deploy:
-    needs: build
+    needs: [build-frontend, build-mcp-server]
     uses: ./.github/workflows/deploy.yml
     with:
-      image_reference: ${{ needs.build.outputs.image_reference }}
+      image_reference: ${{ needs.build-frontend.outputs.image_reference }}
+      mcp_image_reference: ${{ needs.build-mcp-server.outputs.image_reference }}
       kube_namespace: blitzpay-staging
     secrets: inherit
