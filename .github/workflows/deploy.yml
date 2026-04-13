@@ -9,7 +9,7 @@ on:
       kube_namespace:
         description: 'Kubernetes namespace'
         required: true
-        default: elegent-spring-diagram
+        default: blitzpay-staging
   workflow_call:
     inputs:
       image_reference:
@@ -30,7 +30,7 @@ jobs:
   apply:
     runs-on: self-hosted
     env:
-      KUBE_NAMESPACE: ${{ inputs.kube_namespace || github.event.inputs.kube_namespace || secrets.KUBE_NAMESPACE || 'elegent-spring-diagram' }}
+      KUBE_NAMESPACE: ${{ inputs.kube_namespace || github.event.inputs.kube_namespace || secrets.KUBE_NAMESPAC }}
       IMAGE_REFERENCE: ${{ inputs.image_reference || github.event.inputs.image_reference || format('ghcr.io/{0}:latest', github.repository) }}
     steps:
       - name: Checkout repository
